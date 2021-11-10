@@ -1,5 +1,4 @@
 import Observe from '../util/observe'
-import * as cookies from '../util/cookie'
 import { get } from '../util/network'
 import interpolate from '../util/interpolate'
 import { scaleLog } from 'd3-scale'
@@ -14,27 +13,14 @@ import ease from '../util/easing'
  */
 export default class Sync {
   constructor ({
+    currentlyPlaying, trackAnalysis, trackFeatures,
     volumeSmoothing = 100,
     pingDelay = 2500
   } = {}) {
-    const accessToken = cookies.get('SPOTIFY_ACCESS_TOKEN')
-    const refreshToken = cookies.get('SPOTIFY_REFRESH_TOKEN')
-    const refreshCode = cookies.get('SPOTIFY_REFRESH_CODE')
-
     this.state = Observe({
       api: {
-        currentlyPlaying: 'https://api.spotify.com/v1/me/player',
-        trackAnalysis: 'https://api.spotify.com/v1/audio-analysis/',
-        trackFeatures: 'https://api.spotify.com/v1/audio-features/',
-        tokens: {
-          accessToken,
-          refreshToken,
-          refreshCode
-        },
-        headers: {
-          'Authorization': 'Bearer ' + accessToken,
-          'Accept': 'application/json'
-        },
+        trackAnalysis,
+        trackFeatures,
         pingDelay
       },
       intervalTypes: ['tatums', 'segments', 'beats', 'bars', 'sections'],
@@ -45,7 +31,7 @@ export default class Sync {
         bars: {},
         sections: {}
       }),
-      currentlyPlaying: {},
+      currentlyPlaying,
       trackAnalysis: {},
       trackFeatures: {},
       initialTrackProgress: 0,
@@ -92,38 +78,17 @@ export default class Sync {
   }
 
   /**
-   * @method getNewToken - Retrieve new access token from server. 
-   */
-  async getNewToken () {
-    const { data } = await get(`${PROJECT_ROOT}/refresh?token=${this.state.api.tokens.refreshToken}`)
-    cookies.set('SPOTIFY_ACCESS_TOKEN', data.access_token)
-    this.state.api.tokens.accessToken = data.access_token
-    this.state.api.headers = {
-      'Authorization': 'Bearer ' + this.state.api.tokens.accessToken,
-      'Accept': 'application/json'
-    }
-    this.ping()
-  }
-
-  /**
    * @method getCurrentlyPlaying - Ask Spotify for currently playing track.
    */
   async getCurrentlyPlaying () {
-    try {
-      const { data } = await get(this.state.api.currentlyPlaying, { headers: this.state.api.headers })
-      if (!data || !data.is_playing) {
-        if (this.state.active === true) {
-          this.state.active = false
-        }
-        return this.ping()
+    const { data } = this.state.currentlyPlaying
+    if (!data || !data.is_playing) {
+      if (this.state.active === true) {
+        this.state.active = false
       }
-
-      this.processResponse(data)
-    } catch ({ status }) {
-      if (status === 401) {
-        return this.getNewToken()
-      }
+      return this.ping()
     }
+    this.processResponse(data)
   }
 
   /**
@@ -147,8 +112,8 @@ export default class Sync {
   async getTrackInfo (data) {
     const tick = window.performance.now()
     const [ analysis, features ] = await Promise.all([
-      get(this.state.api.trackAnalysis + data.item.id, { headers: this.state.api.headers }).then(res => res.data),
-      get(this.state.api.trackFeatures + data.item.id, { headers: this.state.api.headers }).then(res => res.data),
+      get(this.state.api.trackAnalysis + data.item.id).then(res => res.data),
+      get(this.state.api.trackFeatures + data.item.id).then(res => res.data),
     ])
 
     this.state.intervalTypes.forEach((t) => {
